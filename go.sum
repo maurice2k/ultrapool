@@ -1,0 +1,7 @@
+github.com/gammazero/deque v0.0.0-20190521012701-46e4ffb7a622 h1:lxbhOGZ9pU3Kf8P6lFluUcE82yVZn2EqEf4+mWRNPV0=
+github.com/gammazero/deque v0.0.0-20190521012701-46e4ffb7a622/go.mod h1:D90+MBHVc9Sk1lJAbEVgws0eYEurY4mv2TDso3Nxh3w=
+github.com/gammazero/workerpool v0.0.0-20200108033143-79b2336fad7a h1:9diiB3IwqsdHNhROa3AIrAyT6Gp+WjgjhO0azrxXE6U=
+github.com/gammazero/workerpool v0.0.0-20200108033143-79b2336fad7a/go.mod h1:ZObaTlXZGgqKXhhlk+zNvSOXT+h6VGThA0ZQxLqn8x0=
+github.com/panjf2000/ants v1.3.0 h1:8pQ+8leaLc9lys2viEEr8md0U4RN6uOSUCE9bOYjQ9M=
+github.com/panjf2000/ants/v2 v2.2.2 h1:TWzusBjq/IflXhy+/S6u5wmMLCBdJnB9tPIx9Zmhvok=
+github.com/panjf2000/ants/v2 v2.2.2/go.mod h1:1GFm8bV8nyCQvU5K4WvBCTG1/YBFOD2VzjffD8fV55A=
