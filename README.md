@@ -10,7 +10,7 @@ Each worker has it's own channel that are queued in a slice structure whenever a
 
 While so many channels seem to be a performance issue it turns out that using only a few channels (which are then used by more than one worker) results in much poorer performance.
 
-The main difference to fasthttp's approach is that *ultrapool* uses sharding to minimize the locking effects and uses a spin lock for locking the shards.
+The main difference to fasthttp's approach is that *ultrapool* uses sharding and a small CAS cache to minimize the locking effects. Locking is done on shard level using a spin lock.
 
 
 ## Example
