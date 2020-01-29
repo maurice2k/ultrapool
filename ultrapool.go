@@ -29,6 +29,7 @@ type WorkerPool struct {
 	numShards          int
 	shards             []*poolShard
 	acquireCounter     int
+	_cacheLinePad1     [56]byte
 	spawnedWorkers     uint64
 	mutex              spinLocker
 	started            bool
@@ -36,6 +37,7 @@ type WorkerPool struct {
 	stopChan           chan bool
 	workerCache        sync.Pool
 	idleWorker1        *workerInstance
+	_cacheLinePad2     [56]byte
 }
 
 type workerInstance struct {
@@ -49,11 +51,14 @@ type workerInstance struct {
 type poolShard struct {
 	wp             *WorkerPool
 	idleWorkerList []*workerInstance
+	_cacheLinePad1 [52]byte
 	idleWorker1    *workerInstance
+	_cacheLinePad2 [56]byte
 	idleWorker2    *workerInstance
+	_cacheLinePad3 [56]byte
 	mutex          spinLocker
+	_cacheLinePad4 [40]byte
 	stopped        bool
-	_cacheLinePad  [48]byte
 }
 
 const defaultIdleWorkerLifetime = time.Second
@@ -109,6 +114,7 @@ func (wp *WorkerPool) Start() {
 		for i := 0; i < wp.numShards; i++ {
 			shard := &poolShard{
 				wp: wp,
+				idleWorkerList: make([]*workerInstance, 0, 1000),
 			}
 			wp.shards = append(wp.shards, shard)
 		}
@@ -327,27 +333,10 @@ type spinLocker struct {
 
 func (s *spinLocker) Lock() {
 	for !atomic.CompareAndSwapUint64(&s.lock, 0, 1) {
-		s.scheduler++ // not perfectly accurate
-		if s.scheduler%2 == 0 {
-			runtime.Gosched()
-		}
+		runtime.Gosched()
 	}
-	s.locked++ // not perfectly accurate
 }
 
 func (s *spinLocker) Unlock() {
 	atomic.StoreUint64(&s.lock, 0)
-}
-
-func (s *spinLocker) GetLockedCount() int64 {
-	return s.locked
-}
-
-func (s *spinLocker) GetPressure() float64 {
-	return float64(s.scheduler) / float64(s.locked)
-}
-
-func (s *spinLocker) ResetCounts() {
-	s.scheduler = 0
-	s.locked = 0
 }
