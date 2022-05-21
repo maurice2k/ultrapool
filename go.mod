@@ -1,9 +1,10 @@
 module github.com/maurice2k/ultrapool
 
-go 1.13
+go 1.18
 
 require (
-	github.com/gammazero/workerpool v0.0.0-20200108033143-79b2336fad7a
-	github.com/panjf2000/ants/v2 v2.2.2
-	golang.org/x/perf v0.0.0-20191209155426-36b577b0eb03 // indirect
+	github.com/gammazero/deque v0.1.1 // indirect
+	github.com/gammazero/workerpool v1.1.2
+	github.com/panjf2000/ants/v2 v2.5.0
+	gopkg.in/yaml.v2 v2.2.7 // indirect
 )
