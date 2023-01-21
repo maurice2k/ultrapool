@@ -20,14 +20,13 @@ import (
 	"unsafe"
 )
 
-type Task interface{}
-type TaskHandlerFunc func(task Task)
+type TaskHandlerFunc[T comparable] func(task T)
 
-type WorkerPool struct {
-	handlerFunc        TaskHandlerFunc
+type WorkerPool[T comparable] struct {
+	handlerFunc        TaskHandlerFunc[T]
 	idleWorkerLifetime time.Duration
 	numShards          int
-	shards             []*poolShard
+	shards             []*poolShard[T]
 	mutex              spinLocker
 	started            bool
 	stopped            bool
@@ -35,25 +34,21 @@ type WorkerPool struct {
 	spawnedWorkers     uint64
 }
 
-type workerInstance struct {
-	taskChan  chan Task
-	shard     *poolShard
+type workerInstance[T comparable] struct {
+	taskChan  chan T
+	shard     *poolShard[T]
 	lastUsed  time.Time
 	isDeleted bool
 	_         [16]byte
 }
 
-type poolShard struct {
-	wp             *WorkerPool
+type poolShard[T comparable] struct {
+	wp             *WorkerPool[T]
 	workerCache    sync.Pool
-	idleWorkerList []*workerInstance
-	_              [52]byte
-	idleWorker1    *workerInstance
-	_              [56]byte
-	idleWorker2    *workerInstance
-	_              [56]byte
+	idleWorkerList []*workerInstance[T]
+	idleWorker1    *workerInstance[T]
+	idleWorker2    *workerInstance[T]
 	mutex          spinLocker
-	_              [56]byte
 	stopped        bool
 }
 
@@ -61,8 +56,8 @@ const defaultIdleWorkerLifetime = time.Second
 const maxShards = 128
 
 // Creates a new workerInstance pool with the given task handling function
-func NewWorkerPool(handlerFunc TaskHandlerFunc) *WorkerPool {
-	wp := &WorkerPool{
+func NewWorkerPool[T comparable](handlerFunc TaskHandlerFunc[T]) *WorkerPool[T] {
+	wp := &WorkerPool[T]{
 		handlerFunc:        handlerFunc,
 		idleWorkerLifetime: defaultIdleWorkerLifetime,
 		numShards:          1,
@@ -73,7 +68,7 @@ func NewWorkerPool(handlerFunc TaskHandlerFunc) *WorkerPool {
 }
 
 // Sets number of shards (default is GOMAXPROCS shards)
-func (wp *WorkerPool) SetNumShards(numShards int) {
+func (wp *WorkerPool[T]) SetNumShards(numShards int) {
 	if numShards <= 1 {
 		numShards = 1
 	}
@@ -86,31 +81,31 @@ func (wp *WorkerPool) SetNumShards(numShards int) {
 }
 
 // Sets the time after which idling workers are shut down (default is 15 seconds)
-func (wp *WorkerPool) SetIdleWorkerLifetime(d time.Duration) {
+func (wp *WorkerPool[T]) SetIdleWorkerLifetime(d time.Duration) {
 	wp.idleWorkerLifetime = d
 }
 
 // Returns the number of currently spawned workers
-func (wp *WorkerPool) GetSpawnedWorkers() int {
+func (wp *WorkerPool[T]) GetSpawnedWorkers() int {
 	return int(atomic.LoadUint64(&wp.spawnedWorkers))
 }
 
 // Starts the worker pool
-func (wp *WorkerPool) Start() {
+func (wp *WorkerPool[T]) Start() {
 	wp.mutex.Lock()
 	if !wp.started {
 		for i := 0; i < wp.numShards; i++ {
-			shard := &poolShard{
+			shard := &poolShard[T]{
 				wp: wp,
 				workerCache: sync.Pool{
 					New: func() interface{} {
-						return &workerInstance{
-							taskChan: make(chan Task, 0),
+						return &workerInstance[T]{
+							taskChan: make(chan T),
 						}
 					},
 				},
 
-				idleWorkerList: make([]*workerInstance, 0, 2048),
+				idleWorkerList: make([]*workerInstance[T], 0, 2048),
 			}
 			wp.shards = append(wp.shards, shard)
 		}
@@ -124,7 +119,7 @@ func (wp *WorkerPool) Start() {
 
 // Stops the worker pool.
 // All tasks that have been added will be processed before shutdown.
-func (wp *WorkerPool) Stop() {
+func (wp *WorkerPool[T]) Stop() {
 	wp.mutex.Lock()
 	if !wp.started {
 		wp.mutex.Unlock()
@@ -151,7 +146,7 @@ func (wp *WorkerPool) Stop() {
 }
 
 // Adds a new task
-func (wp *WorkerPool) AddTask(task Task) error {
+func (wp *WorkerPool[T]) AddTask(task T) error {
 	if !wp.started {
 		return errors.New("worker pool must be started first")
 	}
@@ -163,7 +158,7 @@ func (wp *WorkerPool) AddTask(task Task) error {
 }
 
 // Adds a new task
-func (wp *WorkerPool) AddTaskForShard(task Task, shardIdx int) error {
+func (wp *WorkerPool[T]) AddTaskForShard(task T, shardIdx int) error {
 	if !wp.started {
 		return errors.New("worker pool must be started first")
 	}
@@ -175,7 +170,7 @@ func (wp *WorkerPool) AddTaskForShard(task Task, shardIdx int) error {
 }
 
 // Returns next free worker or spawns a new worker
-func (shard *poolShard) getWorker(task Task) (worker *workerInstance) {
+func (shard *poolShard[T]) getWorker(task T) (worker *workerInstance[T]) {
 	worker = shard.idleWorker1
 	if worker != nil && atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&shard.idleWorker1)), unsafe.Pointer(worker), nil) {
 		worker.taskChan <- task
@@ -200,7 +195,7 @@ func (shard *poolShard) getWorker(task Task) (worker *workerInstance) {
 	}
 	shard.mutex.Unlock()
 
-	worker = shard.workerCache.Get().(*workerInstance)
+	worker = shard.workerCache.Get().(*workerInstance[T])
 	worker.shard = shard
 	go worker.run()
 
@@ -209,15 +204,12 @@ func (shard *poolShard) getWorker(task Task) (worker *workerInstance) {
 }
 
 // Main worker runner
-func (worker *workerInstance) run() {
+func (worker *workerInstance[T]) run() {
 	shard := worker.shard
 	wp := shard.wp
 	atomic.AddUint64(&wp.spawnedWorkers, +1)
 
 	for task := range worker.taskChan {
-		if task == nil {
-			break
-		}
 		wp.handlerFunc(task)
 		if !shard.setWorkerIdle(worker) {
 			break
@@ -230,7 +222,7 @@ func (worker *workerInstance) run() {
 }
 
 // Mark worker as idle
-func (shard *poolShard) setWorkerIdle(worker *workerInstance) bool {
+func (shard *poolShard[T]) setWorkerIdle(worker *workerInstance[T]) bool {
 	worker.lastUsed = time.Now()
 
 	if shard.idleWorker2 == nil && atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&shard.idleWorker2)), nil, unsafe.Pointer(worker)) {
@@ -249,8 +241,8 @@ func (shard *poolShard) setWorkerIdle(worker *workerInstance) bool {
 }
 
 // Worker cleanup
-func (wp *WorkerPool) cleanup() {
-	var toBeCleaned []*workerInstance
+func (wp *WorkerPool[T]) cleanup() {
+	var toBeCleaned []*workerInstance[T]
 	for {
 		time.Sleep(wp.idleWorkerLifetime)
 		if wp.stopped {
@@ -301,7 +293,7 @@ func (wp *WorkerPool) cleanup() {
 
 			for j = 0; j < len(toBeCleaned); j++ {
 				if !toBeCleaned[j].shard.stopped {
-					toBeCleaned[j].taskChan <- nil
+					close(toBeCleaned[j].taskChan)
 				}
 				toBeCleaned[j] = nil
 			}

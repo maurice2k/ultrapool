@@ -1,4 +1,4 @@
-package main
+package ultrapool
 
 import (
 	"bytes"
@@ -12,14 +12,16 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	wp_tunny "github.com/Jeffail/tunny"
 	wp_gammazero "github.com/gammazero/workerpool"
 	"github.com/maurice2k/ultrapool"
 	wp_fasthttp "github.com/maurice2k/ultrapool/benchmark/fasthttp"
 	wp_ants "github.com/panjf2000/ants/v2"
+
+	wp_pond "github.com/alitto/pond"
 )
 
 var wg sync.WaitGroup
@@ -70,7 +72,7 @@ var workLoadHandler func()
 //// specific worker pool handler functions
 
 // ultrapool handler function
-func taskHandler(task ultrapool.Task) {
+func taskHandler(task *net.TCPConn) {
 	workLoadHandler()
 	wg.Done()
 }
@@ -79,6 +81,13 @@ func taskHandler(task ultrapool.Task) {
 func taskHandlerAnts(task interface{}) {
 	workLoadHandler()
 	wg.Done()
+}
+
+// tunny pool handler function
+func taskHandlerTunny(task interface{}) interface{} {
+	workLoadHandler()
+	wg.Done()
+	return nil
 }
 
 // fasthttp handler function
@@ -148,6 +157,74 @@ func BenchmarkAntsWorkerpool(b *testing.B) {
 
 }
 
+func BenchmarkTunnyWorkerpool(b *testing.B) {
+	for _, info := range workLoads {
+
+		runtime.GC()
+
+		workLoadHandler = info.handler
+		for _, parallelism := range parellelisms {
+			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
+
+				wp := wp_tunny.NewFunc(runtime.GOMAXPROCS(0), taskHandlerTunny)
+
+				b.ResetTimer()
+
+				b.ReportAllocs()
+				b.SetParallelism(parallelism)
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						wg.Add(1)
+						c := new(net.TCPConn)
+						wp.Process(c)
+					}
+				})
+
+				wp.Close()
+				wg.Wait()
+
+				b.StopTimer()
+			})
+		}
+	}
+
+}
+
+func BenchmarkPondWorkerpool(b *testing.B) {
+	for _, info := range workLoads {
+
+		runtime.GC()
+
+		workLoadHandler = info.handler
+		for _, parallelism := range parellelisms {
+			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
+
+				wp := wp_pond.New(2000, 2000, wp_pond.Strategy(wp_pond.Eager()))
+
+				b.ResetTimer()
+
+				b.ReportAllocs()
+				b.SetParallelism(parallelism)
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						wg.Add(1)
+						c := new(net.TCPConn)
+						wp.Submit(func() {
+							taskHandlerFasthttp(c)
+						})
+					}
+				})
+
+				wp.StopAndWait()
+				wg.Wait()
+
+				b.StopTimer()
+			})
+		}
+	}
+
+}
+
 func BenchmarkUltrapoolWorkerpool(b *testing.B) {
 	for _, info := range workLoads {
 
@@ -160,8 +237,8 @@ func BenchmarkUltrapoolWorkerpool(b *testing.B) {
 				wp := ultrapool.NewWorkerPool(taskHandler)
 				wp.SetIdleWorkerLifetime(time.Second * 5)
 
-				shards := runtime.GOMAXPROCS(0)
-				wp.SetNumShards(shards)
+				//shards := runtime.GOMAXPROCS(0)
+				//wp.SetNumShards(shards)
 				wp.Start()
 
 				b.ResetTimer()
@@ -187,45 +264,46 @@ func BenchmarkUltrapoolWorkerpool(b *testing.B) {
 	}
 }
 
-func BenchmarkEasypoolWorkerpool(b *testing.B) {
-	for _, info := range workLoads {
+/*
+	func BenchmarkEasypoolWorkerpool(b *testing.B) {
+		for _, info := range workLoads {
 
-		runtime.GC()
+			runtime.GC()
 
-		workLoadHandler = info.handler
-		for _, parallelism := range parellelisms {
-			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
+			workLoadHandler = info.handler
+			for _, parallelism := range parellelisms {
+				b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
 
-				wp := NewWorkerPool(taskHandler2)
+					wp := NewWorkerPool(taskHandler2)
 
-				shards := runtime.GOMAXPROCS(0)
-				shards = 1
-				wp.SetNumShards(shards)
-				wp.Start()
+					shards := runtime.GOMAXPROCS(0)
+					shards = 1
+					wp.SetNumShards(shards)
+					wp.Start()
 
-				b.ResetTimer()
+					b.ResetTimer()
 
-				b.ReportAllocs()
-				b.SetParallelism(parallelism)
-				b.RunParallel(func(pb *testing.PB) {
-					for pb.Next() {
-						wg.Add(1)
-						c := new(net.TCPConn)
-						wp.AddTask(c)
-					}
+					b.ReportAllocs()
+					b.SetParallelism(parallelism)
+					b.RunParallel(func(pb *testing.PB) {
+						for pb.Next() {
+							wg.Add(1)
+							c := new(net.TCPConn)
+							wp.AddTask(c)
+						}
+					})
+
+					wp.Stop()
+					wg.Wait()
+
+					b.StopTimer()
+
 				})
+			}
 
-				wp.Stop()
-				wg.Wait()
-
-				b.StopTimer()
-
-			})
 		}
-
 	}
-}
-
+*/
 func BenchmarkFasthttpWorkerpool(b *testing.B) {
 	for _, info := range workLoads {
 
@@ -332,7 +410,7 @@ func pad(blockSize int, buf []byte) []byte {
 }
 
 ////////////////////
-
+/*
 type Task interface{}
 type TaskHandlerFunc func(task Task)
 
@@ -360,7 +438,7 @@ type worker struct {
 	taskChan chan Task
 }
 
-func taskHandler2(task Task) {
+func taskHandler2(task *net.TCPConn) {
 	workLoadHandler()
 	wg.Done()
 }
@@ -418,7 +496,7 @@ func (wp *WorkerPool) getWorker() (w *worker) {
 		w = v.(*worker)
 	}
 
-	if !atomic.CompareAndSwapUint64(&w.state, uint64(stateShutdownPossible), uint64(stateShutdownForbidden)) {
+	if !atomic.CompareAndSwapUint64(&w.state, (stateShutdownPossible), (stateShutdownForbidden)) {
 		// go routing is winding down; restart
 		go w.run(shardIdx)
 	}
@@ -489,10 +567,12 @@ var splitMix64Pool sync.Pool = sync.Pool{
 		return sm64
 	},
 }
+var sm64g = new(splitMix64)
 
 func randInt() (r int) {
-	sm64 := splitMix64Pool.Get().(*splitMix64)
-	r = int(sm64.Int63())
-	splitMix64Pool.Put(sm64)
+	//sm64 := splitMix64Pool.Get().(*splitMix64)
+	r = int(sm64g.Int63())
+	//splitMix64Pool.Put(sm64)
 	return
 }
+*/
