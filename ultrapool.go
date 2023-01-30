@@ -3,7 +3,7 @@
 // It was modeled after valyala/fasthttp's worker pool which is one of the
 // best worker pools I've seen in the Go world.
 
-// Copyright 2019-2022 Moritz Fain
+// Copyright 2019-2023 Moritz Fain
 // Moritz Fain <moritz@fain.io>
 //
 // Source available at github.com/maurice2k/ultrapool,
@@ -20,9 +20,9 @@ import (
 	"unsafe"
 )
 
-type TaskHandlerFunc[T comparable] func(task T)
+type TaskHandlerFunc[T any] func(task T)
 
-type WorkerPool[T comparable] struct {
+type WorkerPool[T any] struct {
 	handlerFunc        TaskHandlerFunc[T]
 	idleWorkerLifetime time.Duration
 	numShards          int
@@ -34,7 +34,7 @@ type WorkerPool[T comparable] struct {
 	spawnedWorkers     uint64
 }
 
-type workerInstance[T comparable] struct {
+type workerInstance[T any] struct {
 	taskChan  chan T
 	shard     *poolShard[T]
 	lastUsed  time.Time
@@ -42,7 +42,7 @@ type workerInstance[T comparable] struct {
 	_         [16]byte
 }
 
-type poolShard[T comparable] struct {
+type poolShard[T any] struct {
 	wp             *WorkerPool[T]
 	workerCache    sync.Pool
 	idleWorkerList []*workerInstance[T]
@@ -56,7 +56,7 @@ const defaultIdleWorkerLifetime = time.Second
 const maxShards = 128
 
 // Creates a new workerInstance pool with the given task handling function
-func NewWorkerPool[T comparable](handlerFunc TaskHandlerFunc[T]) *WorkerPool[T] {
+func NewWorkerPool[T any](handlerFunc TaskHandlerFunc[T]) *WorkerPool[T] {
 	wp := &WorkerPool[T]{
 		handlerFunc:        handlerFunc,
 		idleWorkerLifetime: defaultIdleWorkerLifetime,
