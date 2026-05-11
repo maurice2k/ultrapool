@@ -1,0 +1,28 @@
+{
+    "editor.multiCursorModifier": "alt",
+    "editor.gotoLocation.multipleDefinitions": "goto",
+    "editor.gotoLocation.multipleDeclarations": "goto",
+    "editor.gotoLocation.multipleImplementations": "goto",
+    "editor.gotoLocation.multipleReferences": "peek",
+
+    "go.useLanguageServer": true,
+    "go.gotoSymbol.includeImports": true,
+    "go.toolsManagement.autoUpdate": true,
+    "go.buildTags": "ring",
+    "editor.links": true,
+    "go.alternateTools": {
+      "gopls": "/Users/moritz.fain/go/bin/gopls"
+    },
+    "gopls": {
+      "build.buildFlags": [
+        "-tags=ring"
+      ]
+    },
+
+    "[go]": {
+      "editor.formatOnSave": true,
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+      }
+    }
+  }

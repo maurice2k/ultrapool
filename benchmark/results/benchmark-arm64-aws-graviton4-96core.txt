@@ -1,0 +1,311 @@
+=== Cross-library interleaved benchmark ===
+    CPU: AWS Graviton4 (96 cores)
+    Rounds: 3 | Benchtime: 5s | Parallelism: 100
+    Libraries: 7 | Workloads: 8
+    Workloads: Sleep_1ms SHA256_1kB AES_CBC_1kB AES_CBC_8kB CRC32_64B MemScan_4kB Mixed_Bimodal Mutex_Contention
+
+--- Workload: Sleep_1ms (parallelism=100) ---
+
+  Round 1/3: order = ultrapool-v1 pond fasthttp gammazero ultrapool goroutines ants
+    ultrapool-v1 188.9 ns/op  5294429 ops/sec  197574 peak-workers
+    pond         1616 ns/op  618805 ops/sec  36951 peak-workers
+    fasthttp     756.5 ns/op  1321883 ops/sec  36395 peak-workers
+    gammazero    1074 ns/op  930861 ops/sec  11340 peak-workers
+    ultrapool    160.9 ns/op  6213242 ops/sec  98304 peak-workers
+    goroutines   256.1 ns/op  3905481 ops/sec  58342 peak-workers
+    ants         615.2 ns/op  1625442 ops/sec  21277 peak-workers
+  Round 2/3: order = fasthttp ultrapool-v1 ants goroutines gammazero pond ultrapool
+    fasthttp     745.9 ns/op  1340617 ops/sec  36615 peak-workers
+    ultrapool-v1 190.3 ns/op  5254574 ops/sec  213231 peak-workers
+    ants         617.0 ns/op  1620846 ops/sec  28010 peak-workers
+    goroutines   350.0 ns/op  2857465 ops/sec  1543478 peak-workers
+    gammazero    1114 ns/op  897346 ops/sec  10720 peak-workers
+    pond         1588 ns/op  629631 ops/sec  36214 peak-workers
+    ultrapool    158.2 ns/op  6320905 ops/sec  98304 peak-workers
+  Round 3/3: order = gammazero goroutines fasthttp ultrapool pond ants ultrapool-v1
+    gammazero    1066 ns/op  937767 ops/sec  11097 peak-workers
+    goroutines   366.6 ns/op  2727577 ops/sec  1406946 peak-workers
+    fasthttp     764.0 ns/op  1308832 ops/sec  35480 peak-workers
+    ultrapool    182.5 ns/op  5479161 ops/sec  98304 peak-workers
+    pond         1443 ns/op  692836 ops/sec  35949 peak-workers
+    ants         633.9 ns/op  1577510 ops/sec  22799 peak-workers
+    ultrapool-v1 169.2 ns/op  5909882 ops/sec  94394 peak-workers
+
+--- Workload: SHA256_1kB (parallelism=100) ---
+
+  Round 1/3: order = goroutines fasthttp ants gammazero pond ultrapool-v1 ultrapool
+    goroutines   213.0 ns/op  4695327 ops/sec  186 peak-workers
+    fasthttp     700.4 ns/op  1427787 ops/sec  34074 peak-workers
+    ants         612.5 ns/op  1632544 ops/sec  20889 peak-workers
+    gammazero    1025 ns/op  975897 ops/sec  11329 peak-workers
+    pond         1282 ns/op  779832 ops/sec  29264 peak-workers
+    ultrapool-v1 188.0 ns/op  5319378 ops/sec  234723 peak-workers
+    ultrapool    142.5 ns/op  7017347 ops/sec  98304 peak-workers
+  Round 2/3: order = gammazero goroutines ultrapool ants fasthttp pond ultrapool-v1
+    gammazero    1048 ns/op  954050 ops/sec  11282 peak-workers
+    goroutines   198.2 ns/op  5044460 ops/sec  2035 peak-workers
+    ultrapool    144.1 ns/op  6941701 ops/sec  98304 peak-workers
+    ants         613.8 ns/op  1629166 ops/sec  21609 peak-workers
+    fasthttp     730.6 ns/op  1368749 ops/sec  39034 peak-workers
+    pond         1306 ns/op  765791 ops/sec  26374 peak-workers
+    ultrapool-v1 168.0 ns/op  5950886 ops/sec  203109 peak-workers
+  Round 3/3: order = ultrapool-v1 ants fasthttp goroutines ultrapool gammazero pond
+    ultrapool-v1 184.9 ns/op  5408004 ops/sec  208372 peak-workers
+    ants         613.1 ns/op  1631057 ops/sec  21497 peak-workers
+    fasthttp     703.4 ns/op  1421690 ops/sec  35971 peak-workers
+    goroutines   214.8 ns/op  4656081 ops/sec  2127 peak-workers
+    ultrapool    157.4 ns/op  6353209 ops/sec  98304 peak-workers
+    gammazero    1054 ns/op  949055 ops/sec  10578 peak-workers
+    pond         1342 ns/op  744898 ops/sec  28050 peak-workers
+
+--- Workload: AES_CBC_1kB (parallelism=100) ---
+
+  Round 1/3: order = fasthttp ants ultrapool-v1 gammazero pond ultrapool goroutines
+    fasthttp     1495 ns/op  668910 ops/sec  144970 peak-workers
+    ants         6273 ns/op  159422 ops/sec  61603 peak-workers
+    ultrapool-v1 8869 ns/op  112748 ops/sec  642138 peak-workers
+    gammazero    2686 ns/op  372344 ops/sec  11456 peak-workers
+    pond         2256 ns/op  443166 ops/sec  34091 peak-workers
+    ultrapool    1078 ns/op  927895 ops/sec  98304 peak-workers
+    goroutines   1322 ns/op  756344 ops/sec  777006 peak-workers
+  Round 2/3: order = ultrapool-v1 ultrapool fasthttp ants pond goroutines gammazero
+    ultrapool-v1 3704 ns/op  269950 ops/sec  640217 peak-workers
+    ultrapool    957.7 ns/op  1044185 ops/sec  98304 peak-workers
+    fasthttp     1453 ns/op  688289 ops/sec  233533 peak-workers
+    ants         6350 ns/op  157484 ops/sec  66308 peak-workers
+    pond         2120 ns/op  471607 ops/sec  37785 peak-workers
+    goroutines   1145 ns/op  873493 ops/sec  765284 peak-workers
+    gammazero    2669 ns/op  374608 ops/sec  11222 peak-workers
+  Round 3/3: order = pond ultrapool-v1 goroutines ants fasthttp ultrapool gammazero
+    pond         2591 ns/op  385877 ops/sec  43065 peak-workers
+    ultrapool-v1 11087 ns/op  90199 ops/sec  903379 peak-workers
+    goroutines   1365 ns/op  732574 ops/sec  672903 peak-workers
+    ants         7151 ns/op  139841 ops/sec  61346 peak-workers
+    fasthttp     1439 ns/op  694852 ops/sec  154952 peak-workers
+    ultrapool    982.8 ns/op  1017495 ops/sec  98304 peak-workers
+    gammazero    2514 ns/op  397828 ops/sec  12730 peak-workers
+
+--- Workload: AES_CBC_8kB (parallelism=100) ---
+
+  Round 1/3: order = ants gammazero ultrapool-v1 ultrapool goroutines pond fasthttp
+    ants         22014 ns/op  45426 ops/sec  78573 peak-workers
+    gammazero    3013 ns/op  331847 ops/sec  16086 peak-workers
+    ultrapool-v1 10095 ns/op  99057 ops/sec  434091 peak-workers
+    ultrapool    1786 ns/op  560001 ops/sec  98304 peak-workers
+    goroutines   3202 ns/op  312345 ops/sec  590453 peak-workers
+    pond         2789 ns/op  358525 ops/sec  42049 peak-workers
+    fasthttp     2513 ns/op  397956 ops/sec  366811 peak-workers
+  Round 2/3: order = ants gammazero ultrapool goroutines pond ultrapool-v1 fasthttp
+    ants         18312 ns/op  54610 ops/sec  66517 peak-workers
+    gammazero    2985 ns/op  334999 ops/sec  16989 peak-workers
+    ultrapool    1776 ns/op  563015 ops/sec  98304 peak-workers
+    goroutines   3155 ns/op  316971 ops/sec  540773 peak-workers
+    pond         2782 ns/op  359401 ops/sec  45655 peak-workers
+    ultrapool-v1 21008 ns/op  47600 ops/sec  576297 peak-workers
+    fasthttp     3296 ns/op  303407 ops/sec  349169 peak-workers
+  Round 3/3: order = ultrapool ants ultrapool-v1 pond fasthttp goroutines gammazero
+    ultrapool    2009 ns/op  497750 ops/sec  98304 peak-workers
+    ants         17056 ns/op  58631 ops/sec  70314 peak-workers
+    ultrapool-v1 11965 ns/op  83574 ops/sec  329003 peak-workers
+    pond         2763 ns/op  361936 ops/sec  40703 peak-workers
+    fasthttp     2594 ns/op  385579 ops/sec  321867 peak-workers
+    goroutines   3564 ns/op  280607 ops/sec  601933 peak-workers
+    gammazero    3032 ns/op  329826 ops/sec  15716 peak-workers
+
+--- Workload: CRC32_64B (parallelism=100) ---
+
+  Round 1/3: order = gammazero ultrapool goroutines pond ants fasthttp ultrapool-v1
+    gammazero    1054 ns/op  948674 ops/sec  10487 peak-workers
+    ultrapool    155.7 ns/op  6421744 ops/sec  98304 peak-workers
+    goroutines   186.5 ns/op  5363152 ops/sec  1438 peak-workers
+    pond         1509 ns/op  662865 ops/sec  39028 peak-workers
+    ants         584.9 ns/op  1709626 ops/sec  23241 peak-workers
+    fasthttp     726.4 ns/op  1376581 ops/sec  36951 peak-workers
+    ultrapool-v1 179.3 ns/op  5576545 ops/sec  170739 peak-workers
+  Round 2/3: order = gammazero pond ultrapool-v1 ultrapool fasthttp goroutines ants
+    gammazero    1036 ns/op  965302 ops/sec  10288 peak-workers
+    pond         1582 ns/op  631972 ops/sec  40329 peak-workers
+    ultrapool-v1 171.2 ns/op  5841923 ops/sec  201999 peak-workers
+    ultrapool    149.1 ns/op  6708042 ops/sec  98304 peak-workers
+    fasthttp     745.2 ns/op  1341866 ops/sec  43589 peak-workers
+    goroutines   191.3 ns/op  5227884 ops/sec  284 peak-workers
+    ants         572.0 ns/op  1748374 ops/sec  23041 peak-workers
+  Round 3/3: order = gammazero pond fasthttp ants goroutines ultrapool ultrapool-v1
+    gammazero    1031 ns/op  970096 ops/sec  10900 peak-workers
+    pond         1578 ns/op  633770 ops/sec  43827 peak-workers
+    fasthttp     708.2 ns/op  1412071 ops/sec  40468 peak-workers
+    ants         567.9 ns/op  1760924 ops/sec  22797 peak-workers
+    goroutines   212.0 ns/op  4716755 ops/sec  1616 peak-workers
+    ultrapool    157.6 ns/op  6344407 ops/sec  98304 peak-workers
+    ultrapool-v1 194.7 ns/op  5135115 ops/sec  315258 peak-workers
+
+--- Workload: MemScan_4kB (parallelism=100) ---
+
+  Round 1/3: order = gammazero goroutines ants ultrapool ultrapool-v1 pond fasthttp
+    gammazero    1028 ns/op  972808 ops/sec  10467 peak-workers
+    goroutines   202.2 ns/op  4945650 ops/sec  2367 peak-workers
+    ants         627.6 ns/op  1593257 ops/sec  21263 peak-workers
+    ultrapool    156.6 ns/op  6387214 ops/sec  98304 peak-workers
+    ultrapool-v1 178.7 ns/op  5595159 ops/sec  278771 peak-workers
+    pond         1613 ns/op  619898 ops/sec  27486 peak-workers
+    fasthttp     794.3 ns/op  1258909 ops/sec  53883 peak-workers
+  Round 2/3: order = ultrapool gammazero goroutines ants pond fasthttp ultrapool-v1
+    ultrapool    162.4 ns/op  6156616 ops/sec  98304 peak-workers
+    gammazero    1039 ns/op  962357 ops/sec  10471 peak-workers
+    goroutines   208.8 ns/op  4789860 ops/sec  1475 peak-workers
+    ants         616.1 ns/op  1623121 ops/sec  22896 peak-workers
+    pond         1687 ns/op  592856 ops/sec  27643 peak-workers
+    fasthttp     742.1 ns/op  1347556 ops/sec  38648 peak-workers
+    ultrapool-v1 180.9 ns/op  5528397 ops/sec  209689 peak-workers
+  Round 3/3: order = fasthttp goroutines ultrapool-v1 pond gammazero ants ultrapool
+    fasthttp     761.0 ns/op  1314128 ops/sec  36135 peak-workers
+    goroutines   227.1 ns/op  4404298 ops/sec  2054 peak-workers
+    ultrapool-v1 194.9 ns/op  5132073 ops/sec  168145 peak-workers
+    pond         1666 ns/op  600081 ops/sec  26853 peak-workers
+    gammazero    1023 ns/op  977942 ops/sec  10598 peak-workers
+    ants         638.6 ns/op  1566029 ops/sec  22919 peak-workers
+    ultrapool    161.9 ns/op  6175401 ops/sec  98304 peak-workers
+
+--- Workload: Mixed_Bimodal (parallelism=100) ---
+
+  Round 1/3: order = gammazero goroutines ants ultrapool-v1 ultrapool pond fasthttp
+    gammazero    1743 ns/op  573676 ops/sec  11219 peak-workers
+    goroutines   342.7 ns/op  2917823 ops/sec  395813 peak-workers
+    ants         1732 ns/op  577357 ops/sec  42236 peak-workers
+    ultrapool-v1 456.1 ns/op  2192310 ops/sec  315328 peak-workers
+    ultrapool    246.4 ns/op  4058964 ops/sec  98304 peak-workers
+    pond         2059 ns/op  485568 ops/sec  33420 peak-workers
+    fasthttp     998.9 ns/op  1001151 ops/sec  65040 peak-workers
+  Round 2/3: order = pond gammazero fasthttp ants goroutines ultrapool ultrapool-v1
+    pond         2009 ns/op  497716 ops/sec  36046 peak-workers
+    gammazero    1705 ns/op  586454 ops/sec  11624 peak-workers
+    fasthttp     975.4 ns/op  1025267 ops/sec  72108 peak-workers
+    ants         1609 ns/op  621691 ops/sec  40460 peak-workers
+    goroutines   365.2 ns/op  2738226 ops/sec  394572 peak-workers
+    ultrapool    274.1 ns/op  3648134 ops/sec  98304 peak-workers
+    ultrapool-v1 395.2 ns/op  2530218 ops/sec  337468 peak-workers
+  Round 3/3: order = ants fasthttp pond gammazero goroutines ultrapool-v1 ultrapool
+    ants         1621 ns/op  616907 ops/sec  41424 peak-workers
+    fasthttp     1004 ns/op  996350 ops/sec  61282 peak-workers
+    pond         2021 ns/op  494821 ops/sec  35157 peak-workers
+    gammazero    1734 ns/op  576773 ops/sec  11734 peak-workers
+    goroutines   327.4 ns/op  3054520 ops/sec  318312 peak-workers
+    ultrapool-v1 449.7 ns/op  2223913 ops/sec  387006 peak-workers
+    ultrapool    267.7 ns/op  3735961 ops/sec  98304 peak-workers
+
+--- Workload: Mutex_Contention (parallelism=100) ---
+
+  Round 1/3: order = pond gammazero ants ultrapool-v1 fasthttp ultrapool goroutines
+    pond         1669 ns/op  599010 ops/sec  41026 peak-workers
+    gammazero    1068 ns/op  936735 ops/sec  10623 peak-workers
+    ants         588.3 ns/op  1699700 ops/sec  22328 peak-workers
+    ultrapool-v1 1309 ns/op  763788 ops/sec  8072485 peak-workers
+    fasthttp     755.8 ns/op  1323139 ops/sec  261527 peak-workers
+    ultrapool    266.8 ns/op  3748674 ops/sec  98304 peak-workers
+    goroutines   605.1 ns/op  1652639 ops/sec  3634366 peak-workers
+  Round 2/3: order = gammazero ultrapool-v1 fasthttp goroutines ants pond ultrapool
+    gammazero    1069 ns/op  935033 ops/sec  10680 peak-workers
+    ultrapool-v1 1310 ns/op  763230 ops/sec  5615583 peak-workers
+    fasthttp     701.7 ns/op  1425108 ops/sec  37503 peak-workers
+    goroutines   621.0 ns/op  1610393 ops/sec  3673909 peak-workers
+    ants         604.5 ns/op  1654237 ops/sec  21694 peak-workers
+    pond         1488 ns/op  672268 ops/sec  43780 peak-workers
+    ultrapool    266.6 ns/op  3751416 ops/sec  98304 peak-workers
+  Round 3/3: order = ultrapool ultrapool-v1 pond gammazero fasthttp goroutines ants
+    ultrapool    265.2 ns/op  3771048 ops/sec  98304 peak-workers
+    ultrapool-v1 1252 ns/op  798715 ops/sec  7466290 peak-workers
+    pond         1554 ns/op  643524 ops/sec  40384 peak-workers
+    gammazero    1082 ns/op  924062 ops/sec  10537 peak-workers
+    fasthttp     720.9 ns/op  1387241 ops/sec  37449 peak-workers
+    goroutines   592.6 ns/op  1687521 ops/sec  3820520 peak-workers
+    ants         608.2 ns/op  1644175 ops/sec  21803 peak-workers
+
+=== Summary ===
+
+--- Sleep_1ms (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      167.2 ± 8.0%  6004436 ± 7.6%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1   182.8 ± 6.5%  5486295 ± 6.7% 168400 ±38.3%   3  -8.6% slower
+fasthttp       755.5 ± 1.2%  1323777 ± 1.2%  36163 ± 1.7%   3  -78.0% slower
+ants           622.0 ± 1.7%  1607933 ± 1.6%  24029 ±14.7%   3  -73.2% slower
+pond          1549.0 ± 6.0%   647091 ± 6.2%  36371 ± 1.4%   3  -89.2% slower
+gammazero     1084.7 ± 2.4%   921991 ± 2.3%  11052 ± 2.8%   3  -84.6% slower
+goroutines     324.2 ±18.4%  3163508 ±20.4% 1002922 ±81.8%   3  -47.3% slower
+
+--- SHA256_1kB (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      148.0 ± 5.5%  6770752 ± 5.4%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1   180.3 ± 6.0%  5559423 ± 6.1% 215401 ± 7.9%   3  -17.9% slower
+fasthttp       711.5 ± 2.3%  1406075 ± 2.3%  36360 ± 6.9%   3  -79.2% slower
+ants           613.1 ± 0.1%  1630922 ± 0.1%  21332 ± 1.8%   3  -75.9% slower
+pond          1310.0 ± 2.3%   763507 ± 2.3%  27896 ± 5.2%   3  -88.7% slower
+gammazero     1042.3 ± 1.5%   959667 ± 1.5%  11063 ± 3.8%   3  -85.8% slower
+goroutines     208.7 ± 4.4%  4798623 ± 4.5%   1449 ±75.6%   3  -29.1% slower
+
+--- AES_CBC_1kB (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool     1006.2 ± 6.3%   996525 ± 6.1%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1  7886.7 ±48.0%   157632 ±62.1% 728578 ±20.8%   3  -84.2% slower
+fasthttp      1462.3 ± 2.0%   684017 ± 2.0% 177818 ±27.3%   3  -31.4% slower
+ants          6591.3 ± 7.4%   152249 ± 7.1%  63086 ± 4.4%   3  -84.7% slower
+pond          2322.3 ±10.4%   433550 ±10.1%  38314 ±11.8%   3  -56.5% slower
+gammazero     2623.0 ± 3.6%   381593 ± 3.7%  11803 ± 6.9%   3  -61.7% slower
+goroutines    1277.3 ± 9.1%   787470 ± 9.6% 738398 ± 7.7%   3  -21.0% slower
+
+--- AES_CBC_8kB (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool     1857.0 ± 7.1%   540255 ± 6.8%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1 14356.0 ±40.7%    76744 ±34.4% 446464 ±27.8%   3  -85.8% slower
+fasthttp      2801.0 ±15.4%   362314 ±14.2% 345949 ± 6.5%   3  -32.9% slower
+ants         19127.3 ±13.5%    52889 ±12.8%  71801 ± 8.6%   3  -90.2% slower
+pond          2778.0 ± 0.5%   359954 ± 0.5%  42802 ± 6.0%   3  -33.4% slower
+gammazero     3010.0 ± 0.8%   332224 ± 0.8%  16264 ± 4.0%   3  -38.5% slower
+goroutines    3307.0 ± 6.8%   303308 ± 6.5% 577720 ± 5.6%   3  -43.9% slower
+
+--- CRC32_64B (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      154.1 ± 2.9%  6491398 ± 3.0%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1   181.7 ± 6.6%  5517861 ± 6.5% 229332 ±33.2%   3  -15.0% slower
+fasthttp       726.6 ± 2.5%  1376839 ± 2.5%  40336 ± 8.2%   3  -78.8% slower
+ants           574.9 ± 1.5%  1739641 ± 1.5%  23026 ± 1.0%   3  -73.2% slower
+pond          1556.3 ± 2.6%   642869 ± 2.7%  41061 ± 6.0%   3  -90.1% slower
+gammazero     1040.3 ± 1.2%   961357 ± 1.2%  10558 ± 3.0%   3  -85.2% slower
+goroutines     196.6 ± 6.9%  5102597 ± 6.7%   1113 ±65.0%   3  -21.4% slower
+
+--- MemScan_4kB (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      160.3 ± 2.0%  6239744 ± 2.1%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1   184.8 ± 4.8%  5418543 ± 4.6% 218868 ±25.5%   3  -13.2% slower
+fasthttp       765.8 ± 3.5%  1306864 ± 3.4%  42889 ±22.4%   3  -79.1% slower
+ants           627.4 ± 1.8%  1594136 ± 1.8%  22359 ± 4.2%   3  -74.5% slower
+pond          1655.3 ± 2.3%   604278 ± 2.3%  27327 ± 1.5%   3  -90.3% slower
+gammazero     1030.0 ± 0.8%   971036 ± 0.8%  10512 ± 0.7%   3  -84.4% slower
+goroutines     212.7 ± 6.1%  4713269 ± 5.9%   1965 ±23.0%   3  -24.5% slower
+
+--- Mixed_Bimodal (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      262.7 ± 5.5%  3814353 ± 5.7%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1   433.7 ± 7.7%  2315480 ± 8.1% 346601 ±10.6%   3  -39.3% slower
+fasthttp       992.8 ± 1.5%  1007589 ± 1.5%  66143 ± 8.3%   3  -73.6% slower
+ants          1654.0 ± 4.1%   605318 ± 4.0%  41373 ± 2.1%   3  -84.1% slower
+pond          2029.7 ± 1.3%   492702 ± 1.3%  34874 ± 3.8%   3  -87.1% slower
+gammazero     1727.3 ± 1.1%   578968 ± 1.2%  11526 ± 2.4%   3  -84.8% slower
+goroutines     345.1 ± 5.5%  2903523 ± 5.5% 369566 ±12.0%   3  -23.9% slower
+
+--- Mutex_Contention (parallelism=100) ---
+Library                ns/op        ops/sec   peak-workers   n  vs ultrapool
+-------                -----        -------   ------------   -  ------------
+ultrapool      266.2 ± 0.3%  3757046 ± 0.3%  98304 ± 0.0%   3  (baseline)
+ultrapool-v1  1290.3 ± 2.6%   775244 ± 2.6% 7051453 ±18.2%   3  -79.4% slower
+fasthttp       726.1 ± 3.8%  1378496 ± 3.7% 112160 ±115.3%   3  -63.3% slower
+ants           600.3 ± 1.8%  1666037 ± 1.8%  21942 ± 1.5%   3  -55.7% slower
+pond          1570.3 ± 5.8%   638267 ± 5.8%  41730 ± 4.3%   3  -83.0% slower
+gammazero     1073.0 ± 0.7%   931943 ± 0.7%  10613 ± 0.7%   3  -75.2% slower
+goroutines     606.2 ± 2.3%  1650184 ± 2.3% 3709598 ± 2.6%   3  -56.1% slower

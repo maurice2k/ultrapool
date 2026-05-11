@@ -1,0 +1,6 @@
+# Benchmark result artifacts
+/benchmark*.txt
+/benmark*.txt
+/ultrapool_with_stopChan.txt
+/benchmark/results/*
+!/benchmark/results/benchmark-*.txt

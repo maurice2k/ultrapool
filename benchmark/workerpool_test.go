@@ -7,21 +7,24 @@ import (
 	cryptoRand "crypto/rand"
 	"crypto/sha256"
 	"fmt"
+	"hash/crc32"
 	"io"
+	"math/rand/v2"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	wp_tunny "github.com/Jeffail/tunny"
+	wp_pond "github.com/alitto/pond/v2"
 	wp_gammazero "github.com/gammazero/workerpool"
-	"github.com/maurice2k/ultrapool"
 	wp_fasthttp "github.com/maurice2k/ultrapool/benchmark/fasthttp"
+	wp_ultrapool_v1 "github.com/maurice2k/ultrapool/benchmark/ultrapool-v1"
+	"github.com/maurice2k/ultrapool/v2"
 	wp_ants "github.com/panjf2000/ants/v2"
-
-	wp_pond "github.com/alitto/pond"
 )
 
 var wg sync.WaitGroup
@@ -29,6 +32,10 @@ var wg sync.WaitGroup
 var aesKey = []byte("0123456789ABCDEF")
 var oneKiloByte = []byte(strings.Repeat("a", 1024))
 var eightKiloByte = []byte(strings.Repeat("a", 8192))
+var sixtyFourBytes = []byte(strings.Repeat("x", 64))
+var fourKiloBytes = make([]byte, 4096)
+var mutexCounter atomic.Int64
+var sharedMutex sync.Mutex
 
 type workLoadInfo struct {
 	name    string
@@ -43,6 +50,13 @@ var workLoads = []workLoadInfo{
 		"Sleep for 1 microsecond",
 		func() {
 			time.Sleep(time.Microsecond)
+		},
+	},
+	{
+		"Sleep_50ms",
+		"Sleep for 50 milliseconds (pins workers — exposes spawn behavior)",
+		func() {
+			time.Sleep(50 * time.Millisecond)
 		},
 	},
 	{
@@ -66,6 +80,44 @@ var workLoads = []workLoadInfo{
 			encryptCBC(eightKiloByte, aesKey)
 		},
 	},
+	{
+		"CRC32_64B",
+		"CRC32 over 64 bytes (ultra-short CPU)",
+		func() {
+			crc32.ChecksumIEEE(sixtyFourBytes)
+		},
+	},
+	{
+		"MemScan_4kB",
+		"Linear sum scan of 4kB buffer (memory-bound)",
+		func() {
+			var sum byte
+			for _, b := range fourKiloBytes {
+				sum += b
+			}
+			_ = sum
+		},
+	},
+	{
+		"Mixed_Bimodal",
+		"80% fast (~100ns CRC32) + 20% slow (~5us AES-CBC)",
+		func() {
+			if rand.Uint32()%5 == 0 {
+				encryptCBC(oneKiloByte, aesKey)
+			} else {
+				crc32.ChecksumIEEE(sixtyFourBytes)
+			}
+		},
+	},
+	{
+		"Mutex_Contention",
+		"Acquire shared mutex, increment counter",
+		func() {
+			sharedMutex.Lock()
+			mutexCounter.Add(1)
+			sharedMutex.Unlock()
+		},
+	},
 }
 var workLoadHandler func()
 
@@ -73,6 +125,12 @@ var workLoadHandler func()
 
 // ultrapool handler function
 func taskHandler(task *net.TCPConn) {
+	workLoadHandler()
+	wg.Done()
+}
+
+// ultrapool v1 handler function
+func taskHandlerV1(task wp_ultrapool_v1.Task) {
 	workLoadHandler()
 	wg.Done()
 }
@@ -97,6 +155,49 @@ func taskHandlerFasthttp(conn net.Conn) error {
 	return nil
 }
 
+// Samples runtime goroutines and pool worker count during a benchmark run.
+func startRuntimeSampler(getWorkers func() int) func() (int, int) {
+	var peakGoroutines atomic.Int64
+	var peakWorkers atomic.Int64
+	done := make(chan struct{})
+
+	updateMax := func(dst *atomic.Int64, v int64) {
+		for {
+			cur := dst.Load()
+			if v <= cur || dst.CompareAndSwap(cur, v) {
+				return
+			}
+		}
+	}
+
+	sample := func() {
+		updateMax(&peakGoroutines, int64(runtime.NumGoroutine()))
+		if getWorkers != nil {
+			updateMax(&peakWorkers, int64(getWorkers()))
+		}
+	}
+
+	sample()
+	go func() {
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				sample()
+			}
+		}
+	}()
+
+	return func() (int, int) {
+		close(done)
+		sample()
+		return int(peakGoroutines.Load()), int(peakWorkers.Load())
+	}
+}
+
 //// benchmarks
 
 func BenchmarkPlainGoRoutines(b *testing.B) {
@@ -108,20 +209,29 @@ func BenchmarkPlainGoRoutines(b *testing.B) {
 		for _, parallelism := range parellelisms {
 			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
 
+				var inFlight atomic.Int64
+				stopSampler := startRuntimeSampler(func() int { return int(inFlight.Load()) })
+
 				b.ReportAllocs()
 				b.SetParallelism(parallelism)
 				b.RunParallel(func(pb *testing.PB) {
 					for pb.Next() {
 						wg.Add(1)
 						c := new(net.TCPConn)
-						go taskHandler(c)
+						go func(c *net.TCPConn) {
+							inFlight.Add(1)
+							taskHandler(c)
+							inFlight.Add(-1)
+						}(c)
 					}
 				})
+				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
 			})
 		}
 	}
-
-	wg.Wait()
 }
 
 func BenchmarkAntsWorkerpool(b *testing.B) {
@@ -133,7 +243,9 @@ func BenchmarkAntsWorkerpool(b *testing.B) {
 		for _, parallelism := range parellelisms {
 			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
 
-				wp, _ := wp_ants.NewPoolWithFunc(10000000, taskHandlerAnts, wp_ants.WithPreAlloc(false), wp_ants.WithExpiryDuration(time.Second*5))
+				wp, _ := wp_ants.NewPoolWithFunc(10000000, taskHandlerAnts, wp_ants.WithPreAlloc(false), wp_ants.WithExpiryDuration(time.Second*15))
+
+				stopSampler := startRuntimeSampler(func() int { return wp.Running() })
 
 				b.ResetTimer()
 
@@ -149,6 +261,9 @@ func BenchmarkAntsWorkerpool(b *testing.B) {
 
 				wp.Release()
 				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
 
 				b.StopTimer()
 			})
@@ -158,13 +273,13 @@ func BenchmarkAntsWorkerpool(b *testing.B) {
 }
 
 func BenchmarkTunnyWorkerpool(b *testing.B) {
-	for _, info := range workLoads {
+	for _, workLoad := range workLoads {
 
 		runtime.GC()
 
-		workLoadHandler = info.handler
+		workLoadHandler = workLoad.handler
 		for _, parallelism := range parellelisms {
-			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%s/%d", workLoad.name, parallelism), func(b *testing.B) {
 
 				wp := wp_tunny.NewFunc(runtime.GOMAXPROCS(0), taskHandlerTunny)
 
@@ -182,6 +297,7 @@ func BenchmarkTunnyWorkerpool(b *testing.B) {
 
 				wp.Close()
 				wg.Wait()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
 
 				b.StopTimer()
 			})
@@ -199,7 +315,9 @@ func BenchmarkPondWorkerpool(b *testing.B) {
 		for _, parallelism := range parellelisms {
 			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
 
-				wp := wp_pond.New(2000, 2000, wp_pond.Strategy(wp_pond.Eager()))
+				wp := wp_pond.NewPool(10000000)
+
+				stopSampler := startRuntimeSampler(func() int { return int(wp.RunningWorkers()) })
 
 				b.ResetTimer()
 
@@ -217,6 +335,9 @@ func BenchmarkPondWorkerpool(b *testing.B) {
 
 				wp.StopAndWait()
 				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
 
 				b.StopTimer()
 			})
@@ -235,11 +356,11 @@ func BenchmarkUltrapoolWorkerpool(b *testing.B) {
 			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
 
 				wp := ultrapool.NewWorkerPool(taskHandler)
-				wp.SetIdleWorkerLifetime(time.Second * 5)
+				wp.SetIdleWorkerLifetime(time.Second * 15)
 
-				//shards := runtime.GOMAXPROCS(0)
-				//wp.SetNumShards(shards)
 				wp.Start()
+
+				stopSampler := startRuntimeSampler(func() int { return wp.GetSpawnedWorkers() })
 
 				b.ResetTimer()
 
@@ -249,18 +370,339 @@ func BenchmarkUltrapoolWorkerpool(b *testing.B) {
 					for pb.Next() {
 						wg.Add(1)
 						c := new(net.TCPConn)
-						wp.AddTask(c)
+						if err := wp.AddTaskWithBlocking(c); err != nil {
+							wg.Done()
+						}
 					}
 				})
 
 				wp.Stop()
 				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
 
 				b.StopTimer()
+
+				runtime.GC()
+				time.Sleep(100 * time.Millisecond)
 
 			})
 		}
 
+	}
+}
+
+func BenchmarkUltrapoolV1Workerpool(b *testing.B) {
+	for _, info := range workLoads {
+
+		runtime.GC()
+
+		workLoadHandler = info.handler
+		for _, parallelism := range parellelisms {
+			b.Run(fmt.Sprintf("%s/%d", info.name, parallelism), func(b *testing.B) {
+
+				wp := wp_ultrapool_v1.NewWorkerPool(taskHandlerV1)
+				wp.SetIdleWorkerLifetime(time.Second * 15)
+				numShards := runtime.GOMAXPROCS(0) / 4
+				if numShards < 2 {
+					numShards = 2
+				}
+				if numShards > 12 {
+					numShards = 12
+				}
+				wp.SetNumShards(numShards)
+
+				wp.Start()
+
+				stopSampler := startRuntimeSampler(func() int { return wp.GetSpawnedWorkers() })
+
+				b.ResetTimer()
+
+				b.ReportAllocs()
+				b.SetParallelism(parallelism)
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						wg.Add(1)
+						c := new(net.TCPConn)
+						_ = wp.AddTask(c)
+					}
+				})
+
+				wp.Stop()
+				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
+
+				b.StopTimer()
+
+				runtime.GC()
+				time.Sleep(100 * time.Millisecond)
+
+			})
+		}
+
+	}
+}
+
+// BenchmarkUltrapoolSlowBurst tests scaling under a small burst of slow tasks.
+// 50 tasks × 2s sleep:
+//   - Ideal (one goroutine each):       ~2s wall-clock
+//   - 24 workers, no spawning:          ~4s (two rounds)
+//   - Aggressive spawning to ~50:       ~2s
+//
+// Two variants:
+//   - "multishard": tasks distributed across 12 shards (~4 tasks/shard)
+//     — buffer rarely fills, so spawn-on-full triggers don't fire.
+//   - "singleshard": all tasks go to shard 0 — buffer fills if queueSize is small.
+//
+// Run with:
+//
+//	go test -tags=ring -run='^$' -bench='BenchmarkUltrapoolSlowBurst' \
+//	    -benchtime=3x -count=3 -timeout=300s .
+func BenchmarkUltrapoolSlowBurst(b *testing.B) {
+	const burstSize = 50
+	const sleepDur = 2 * time.Second
+	// queueSize stays at the library default (1024). The whole point of this
+	// benchmark is to expose how the spawn-decision logic behaves when the
+	// buffer is large enough to hide the load signal.
+
+	workLoadHandler = func() { time.Sleep(sleepDur) }
+
+	wp := ultrapool.NewWorkerPool(taskHandler)
+	wp.SetIdleWorkerLifetime(10_000 * time.Millisecond)
+	wp.SetMaxWorkers(10_000 * wp.GetNumShards())
+	wp.SetNumShards(4)
+	wp.Start()
+
+	stopSampler := startRuntimeSampler(func() int { return wp.GetSpawnedWorkers() })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(burstSize)
+		for j := 0; j < burstSize; j++ {
+			c := new(net.TCPConn)
+			_ = wp.AddTaskWithBlocking(c)
+		}
+		wg.Wait()
+
+		b.StopTimer()
+		time.Sleep(300 * time.Millisecond) // age workers out
+		b.StartTimer()
+	}
+
+	wp.Stop()
+	_, peakWorkers := stopSampler()
+	b.ReportMetric(float64(peakWorkers), "peak-workers")
+	b.ReportMetric(float64(burstSize), "burst-size")
+}
+
+func BenchmarkUltrapoolV1SlowBurst(b *testing.B) {
+	const burstSize = 50
+	const sleepDur = 2 * time.Second
+
+	workLoadHandler = func() { time.Sleep(sleepDur) }
+
+	wp := wp_ultrapool_v1.NewWorkerPool(taskHandlerV1)
+	wp.SetIdleWorkerLifetime(100 * time.Millisecond)
+	wp.Start()
+
+	stopSampler := startRuntimeSampler(func() int { return wp.GetSpawnedWorkers() })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(burstSize)
+		for j := 0; j < burstSize; j++ {
+			c := new(net.TCPConn)
+			_ = wp.AddTask(c)
+		}
+		wg.Wait()
+
+		b.StopTimer()
+		time.Sleep(300 * time.Millisecond) // age workers out
+		b.StartTimer()
+	}
+
+	wp.Stop()
+	_, peakWorkers := stopSampler()
+	b.ReportMetric(float64(peakWorkers), "peak-workers")
+	b.ReportMetric(float64(burstSize), "burst-size")
+}
+
+// Cross-library SlowBurst benchmarks for fasthttp, ants, and goroutines.
+// Same shape as BenchmarkUltrapoolSlowBurst/multishard so results are
+// directly comparable.
+
+const slowBurstSize = 50
+const slowBurstSleep = 2 * time.Second
+const slowBurstIdle = 300 * time.Millisecond
+
+func BenchmarkFasthttpSlowBurst(b *testing.B) {
+	workLoadHandler = func() { time.Sleep(slowBurstSleep) }
+
+	wp := &wp_fasthttp.WorkerPool{
+		WorkerFunc:            taskHandlerFasthttp,
+		MaxWorkersCount:       10_000_000,
+		LogAllErrors:          false,
+		Logger:                nil,
+		MaxIdleWorkerDuration: 100 * time.Millisecond,
+	}
+	wp.Start()
+
+	stopSampler := startRuntimeSampler(func() int { return wp.GetWorkersCount() })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(slowBurstSize)
+		for j := 0; j < slowBurstSize; j++ {
+			c := new(net.TCPConn)
+			wp.Serve(c)
+		}
+		wg.Wait()
+
+		b.StopTimer()
+		time.Sleep(slowBurstIdle)
+		b.StartTimer()
+	}
+
+	wp.Stop()
+	_, peakWorkers := stopSampler()
+	b.ReportMetric(float64(peakWorkers), "peak-workers")
+	b.ReportMetric(float64(slowBurstSize), "burst-size")
+}
+
+func BenchmarkAntsSlowBurst(b *testing.B) {
+	workLoadHandler = func() { time.Sleep(slowBurstSleep) }
+
+	wp, _ := wp_ants.NewPoolWithFunc(10_000_000, taskHandlerAnts,
+		wp_ants.WithPreAlloc(false),
+		wp_ants.WithExpiryDuration(100*time.Millisecond))
+
+	stopSampler := startRuntimeSampler(func() int { return wp.Running() })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(slowBurstSize)
+		for j := 0; j < slowBurstSize; j++ {
+			c := new(net.TCPConn)
+			_ = wp.Invoke(c)
+		}
+		wg.Wait()
+
+		b.StopTimer()
+		time.Sleep(slowBurstIdle)
+		b.StartTimer()
+	}
+
+	wp.Release()
+	_, peakWorkers := stopSampler()
+	b.ReportMetric(float64(peakWorkers), "peak-workers")
+	b.ReportMetric(float64(slowBurstSize), "burst-size")
+}
+
+func BenchmarkPlainGoSlowBurst(b *testing.B) {
+	workLoadHandler = func() { time.Sleep(slowBurstSleep) }
+
+	var inFlight atomic.Int64
+	stopSampler := startRuntimeSampler(func() int { return int(inFlight.Load()) })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		wg.Add(slowBurstSize)
+		for j := 0; j < slowBurstSize; j++ {
+			c := new(net.TCPConn)
+			go func(c *net.TCPConn) {
+				inFlight.Add(1)
+				taskHandler(c)
+				inFlight.Add(-1)
+			}(c)
+		}
+		wg.Wait()
+
+		b.StopTimer()
+		time.Sleep(slowBurstIdle)
+		b.StartTimer()
+	}
+
+	_, peakWorkers := stopSampler()
+	b.ReportMetric(float64(peakWorkers), "peak-workers")
+	b.ReportMetric(float64(slowBurstSize), "burst-size")
+}
+
+// BenchmarkUltrapoolBurst exercises bursty, sub-saturation workloads.
+// Each iteration submits `burstSize` tasks, waits for them to finish, then
+// sleeps so workers can age out back toward shardMinWorkers before the next
+// burst. This isolates the spawn-decision logic (cold-start latency) instead
+// of measuring steady-state saturation.
+//
+// Run only this benchmark with:
+//
+//	go test -tags=ring -run='^$' -bench='BenchmarkUltrapoolBurst' \
+//	    -benchtime=200x -count=5 -timeout=300s .
+//
+// (-benchtime=200x => exactly 200 bursts per measurement)
+func BenchmarkUltrapoolBurst(b *testing.B) {
+	burstSizes := []int{50, 500, 5000}
+	idleSleep := 50 * time.Millisecond
+
+	for _, info := range workLoads {
+		workLoadHandler = info.handler
+
+		for _, burstSize := range burstSizes {
+			b.Run(fmt.Sprintf("%s/burst_%d", info.name, burstSize), func(b *testing.B) {
+				wp := ultrapool.NewWorkerPool(taskHandler)
+				wp.SetIdleWorkerLifetime(20 * time.Millisecond) // age out fast between bursts
+				numShards := runtime.GOMAXPROCS(0) / 4
+				if numShards < 2 {
+					numShards = 2
+				}
+				if numShards > 12 {
+					numShards = 12
+				}
+				wp.SetNumShards(numShards)
+				wp.SetMaxWorkers(10_000 * numShards)
+				wp.Start()
+
+				stopSampler := startRuntimeSampler(func() int { return wp.GetSpawnedWorkers() })
+
+				b.ResetTimer()
+				b.ReportAllocs()
+
+				for i := 0; i < b.N; i++ {
+					var localWG sync.WaitGroup
+					localWG.Add(burstSize)
+					// Override taskHandler's wg.Done with our local one for this burst.
+					// (taskHandler uses the package-level wg, so we need to also Add to it.)
+					wg.Add(burstSize)
+					for j := 0; j < burstSize; j++ {
+						c := new(net.TCPConn)
+						_ = wp.AddTaskWithBlocking(c)
+					}
+					wg.Wait() // wait for all tasks in this burst to complete
+					_ = localWG
+					b.StopTimer()
+					time.Sleep(idleSleep) // let workers age out
+					b.StartTimer()
+				}
+
+				wp.Stop()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N*burstSize)/b.Elapsed().Seconds(), "tasks/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
+				b.ReportMetric(float64(burstSize), "burst-size")
+			})
+		}
 	}
 }
 
@@ -322,6 +764,8 @@ func BenchmarkFasthttpWorkerpool(b *testing.B) {
 				}
 				wp.Start()
 
+				stopSampler := startRuntimeSampler(func() int { return wp.GetWorkersCount() })
+
 				b.ResetTimer()
 
 				b.ReportAllocs()
@@ -336,6 +780,9 @@ func BenchmarkFasthttpWorkerpool(b *testing.B) {
 
 				wp.Stop()
 				wg.Wait()
+				_, peakWorkers := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakWorkers), "peak-workers")
 
 				b.StopTimer()
 			})
@@ -355,6 +802,8 @@ func BenchmarkGammazeroWorkerpool(b *testing.B) {
 
 				wp := wp_gammazero.New(10000000)
 
+				stopSampler := startRuntimeSampler(nil)
+
 				b.ResetTimer()
 
 				b.ReportAllocs()
@@ -371,6 +820,9 @@ func BenchmarkGammazeroWorkerpool(b *testing.B) {
 
 				wp.Stop()
 				wg.Wait()
+				peakGoroutines, _ := stopSampler()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+				b.ReportMetric(float64(peakGoroutines), "peak-workers")
 
 				b.StopTimer()
 

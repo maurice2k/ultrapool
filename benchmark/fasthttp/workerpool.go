@@ -1,7 +1,7 @@
 package wp_fasthttp
 
 // fasthttp workerpool, ripped out of https://github.com/valyala/fasthttp/blob/master/workerpool.go
-// for benchmarking purposes (2019-09-10)
+// for benchmarking purposes (2026-05-01)
 
 import (
 	"net"
@@ -55,10 +55,15 @@ type workerChan struct {
 
 func (wp *WorkerPool) Start() {
 	if wp.stopCh != nil {
-		panic("BUG: WorkerPool already started")
+		return
 	}
 	wp.stopCh = make(chan struct{})
 	stopCh := wp.stopCh
+	wp.workerChanPool.New = func() any {
+		return &workerChan{
+			ch: make(chan net.Conn, workerChanCap),
+		}
+	}
 	go func() {
 		var scratch []*workerChan
 		for {
@@ -75,7 +80,7 @@ func (wp *WorkerPool) Start() {
 
 func (wp *WorkerPool) Stop() {
 	if wp.stopCh == nil {
-		panic("BUG: WorkerPool wasn't started")
+		return
 	}
 	close(wp.stopCh)
 	wp.stopCh = nil
@@ -85,8 +90,8 @@ func (wp *WorkerPool) Stop() {
 	// serving the connection and noticing wp.mustStop = true.
 	wp.lock.Lock()
 	ready := wp.ready
-	for i, ch := range ready {
-		ch.ch <- nil
+	for i := range ready {
+		ready[i].ch <- nil
 		ready[i] = nil
 	}
 	wp.ready = ready[:0]
@@ -106,23 +111,35 @@ func (wp *WorkerPool) clean(scratch *[]*workerChan) {
 
 	// Clean least recently used workers if they didn't serve connections
 	// for more than maxIdleWorkerDuration.
-	currentTime := time.Now()
+	criticalTime := time.Now().Add(-maxIdleWorkerDuration)
 
 	wp.lock.Lock()
 	ready := wp.ready
 	n := len(ready)
-	i := 0
-	for i < n && currentTime.Sub(ready[i].lastUseTime) > maxIdleWorkerDuration {
-		i++
-	}
-	*scratch = append((*scratch)[:0], ready[:i]...)
-	if i > 0 {
-		m := copy(ready, ready[i:])
-		for i = m; i < n; i++ {
-			ready[i] = nil
+
+	// Use binary-search algorithm to find out the index of the least recently
+	// worker which can be cleaned up.
+	l, r := 0, n-1
+	for l <= r {
+		mid := (l + r) / 2
+		if criticalTime.After(ready[mid].lastUseTime) {
+			l = mid + 1
+		} else {
+			r = mid - 1
 		}
-		wp.ready = ready[:m]
 	}
+	i := r
+	if i == -1 {
+		wp.lock.Unlock()
+		return
+	}
+
+	*scratch = append((*scratch)[:0], ready[:i+1]...)
+	m := copy(ready, ready[i+1:])
+	for i = m; i < n; i++ {
+		ready[i] = nil
+	}
+	wp.ready = ready[:m]
 	wp.lock.Unlock()
 
 	// Notify obsolete workers to stop.
@@ -130,8 +147,8 @@ func (wp *WorkerPool) clean(scratch *[]*workerChan) {
 	// may be blocking and may consume a lot of time if many workers
 	// are located on non-local CPUs.
 	tmp := *scratch
-	for i, ch := range tmp {
-		ch.ch <- nil
+	for i := range tmp {
+		tmp[i].ch <- nil
 		tmp[i] = nil
 	}
 }
@@ -183,11 +200,6 @@ func (wp *WorkerPool) getCh() *workerChan {
 			return nil
 		}
 		vch := wp.workerChanPool.Get()
-		if vch == nil {
-			vch = &workerChan{
-				ch: make(chan net.Conn, workerChanCap),
-			}
-		}
 		ch = vch.(*workerChan)
 		go func() {
 			wp.workerFunc(ch)
@@ -219,14 +231,16 @@ func (wp *WorkerPool) workerFunc(ch *workerChan) {
 		}
 		if err = wp.WorkerFunc(c); err != nil {
 			errStr := err.Error()
-			if wp.LogAllErrors || !(strings.Contains(errStr, "broken pipe") ||
+			shouldIgnore := strings.Contains(errStr, "broken pipe") ||
 				strings.Contains(errStr, "reset by peer") ||
 				strings.Contains(errStr, "request headers: small read buffer") ||
-				strings.Contains(errStr, "i/o timeout")) {
-				wp.Logger.Printf("error when serving connection %q<->%q: %s", c.LocalAddr(), c.RemoteAddr(), err)
+				strings.Contains(errStr, "unexpected EOF") ||
+				strings.Contains(errStr, "i/o timeout")
+			if wp.LogAllErrors || !shouldIgnore {
+				wp.Logger.Printf("error when serving connection %q<->%q: %v", c.LocalAddr(), c.RemoteAddr(), err)
 			}
 		}
-		c.Close()
+		_ = c.Close()
 		c = nil
 
 		if !wp.release(ch) {

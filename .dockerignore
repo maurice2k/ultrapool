@@ -1,0 +1,4 @@
+benchmark/results/
+benchmark/benchmark.test
+*.bak
+.git
