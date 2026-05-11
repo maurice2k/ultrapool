@@ -23,7 +23,7 @@ It is also dramatically faster than ultrapool v1 — up to **3× the throughput*
 ## Install
 
 ```sh
-go get github.com/maurice2k/ultrapool
+go get github.com/maurice2k/ultrapool/v2
 ```
 
 
